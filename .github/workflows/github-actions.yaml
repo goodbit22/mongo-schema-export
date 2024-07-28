@@ -1,0 +1,55 @@
+name: CI
+on:
+    push: 
+      branches: [master]
+    pull_request:
+      branches: [master]
+
+jobs:
+    linter:
+        runs-on: ubuntu-latest
+        continue-on-error: true
+        steps: 
+            - name: Checkout Code
+              uses: actions/checkout@v3
+              with:
+                fetch-depth: 0
+            - name: Lint Code Base
+              uses: github/super-linter@v4
+
+    dependencies:
+        runs-on: ubuntu-latest
+        continue-on-error: true
+        steps:
+          - uses: actions/setup-python@v5
+            with:
+              python-version: '3.9'
+              cache: 'pip' # caching pip dependencies
+          - run: pip install -r requirements-ci.txt
+
+    scan_secure:
+        runs-on: ubuntu-latest
+        container:
+            image: returntocorp/semgrep
+        if: (github.actor != 'dependabot[bot]')
+        steps: 
+            - uses: actions/checkout@v3
+            - name: semgrep
+              run: semgrep --config auto 
+
+    docker:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v3
+        - name: Login to Docker Hub
+          uses: docker/login-action@v3
+          with:
+            username: ${{ secrets.DOCKERHUB_USERNAME }}
+            password: ${{ secrets.DOCKERHUB_TOKEN }}
+        - name: Build and push
+          uses: docker/build-push-action@v6
+          with:
+            push: true
+            tags: user/app:latest
+       

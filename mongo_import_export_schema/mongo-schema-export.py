@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -6,6 +6,18 @@ from datetime import datetime
 import pymongo
 from bson import json_util
 import argparse
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logging.basicConfig(
+    format="{asctime} - {levelname} - {message}",
+    style="{",
+    datefmt="%Y-%m-%d %H:%M",
+    level=logging.DEBUG,
+)
+
+
 
 
 def log(verbose, *args):
@@ -20,7 +32,9 @@ def toInt(x):
         return x
 
 
-def mongo_export(client: pymongo.MongoClient, fname: str, databases: str, verbose: bool):
+def mongo_export(
+    client: pymongo.MongoClient, fname: str, databases: str, verbose: bool
+):
     """
 
     :param client:
@@ -28,64 +42,95 @@ def mongo_export(client: pymongo.MongoClient, fname: str, databases: str, verbos
     :return:
     """
     out = defaultdict(dict)
-    for dbname in databases.split(','):
+    for dbname in databases.split(","):
         log(verbose, "Exporting database:", dbname)
         db = client[dbname]
         for cname in db.list_collection_names():
             coll = db[cname]
             log(verbose, "\tExporting collection", cname)
             opts = coll.options()
-            autoIndexId = 'autoIndexId'
+            autoIndexId = "autoIndexId"
             if autoIndexId in opts:
                 del opts[autoIndexId]  # this is deprecated
             indexes = [dict(x) for x in coll.list_indexes()]
             out_indexes = []
             for i in indexes:
-                i['keys'] = [[k, toInt(v)] for k, v in i['key'].items()]
-                for f in 'key', 'ns', 'v':
+                i["keys"] = [[k, toInt(v)] for k, v in i["key"].items()]
+                for f in "key", "ns", "v":
                     if f in i:
                         del i[f]
                 out_indexes.append(i)
 
-            out[dbname][cname] = {
-                'indexes': out_indexes,
-                'options': opts
-            }
-    with open(fname, 'w') as out_file:
-        out_str = json_util.dumps({
-            'databases': out,
-            'exported': datetime.now().isoformat()
-        }, indent=4)
+            out[dbname][cname] = {"indexes": out_indexes, "options": opts}
+    with open(fname, "w") as out_file:
+        out_str = json_util.dumps(
+            {"databases": out, "exported": datetime.now().isoformat()}, indent=4
+        )
         out_file.write(out_str)
     return out_str
 
 
 def main(argv=sys.argv):
-    parser = argparse.ArgumentParser(description="Export a schema for a mongodb database")
-    parser.add_argument('--uri', metavar='uri', type=str,
-                        help='Full uri, use in place of server/port/user/auth_db, eg: mongodb://user:pass@example.com:port/auth_db')
-    parser.add_argument("--host", metavar='h', type=str, help='Server host', default='localhost')
-    parser.add_argument("--port", metavar='p', type=int, help='Server port', default=27017)
-    parser.add_argument('--username', metavar='u', type=str, help='Username', default='')
-    parser.add_argument('--password', metavar='pwd', type=str, help='Password', default='')
-    parser.add_argument('--authSource', metavar='a', type=str, help='DB to auth against', default='admin')
-    parser.add_argument('--file', metavar='f', type=str, help='Path to exported .json file', default='config.json')
-    parser.add_argument('--databases', metavar='db', type=str,
-                        help='Databases separated by a comma, eg: db_1,db_2,db_n')
-    parser.add_argument('--verbose', action='store_true', help='Show verbose output')
+    parser = argparse.ArgumentParser(
+        description="Export a schema for a mongodb database"
+    )
+    parser.add_argument(
+        "--uri",
+        metavar="uri",
+        type=str,
+        help="Full uri, use in place of server/port/user/auth_db, eg: mongodb://user:pass@example.com:port/auth_db",
+    )
+    parser.add_argument(
+        "--host", metavar="h", type=str, help="Server host", default="localhost"
+    )
+    parser.add_argument(
+        "--port", metavar="p", type=int, help="Server port", default=27017
+    )
+    parser.add_argument(
+        "--username", metavar="u", type=str, help="Username", default=""
+    )
+    parser.add_argument(
+        "--password", metavar="pwd", type=str, help="Password", default=""
+    )
+    parser.add_argument(
+        "--authSource",
+        metavar="a",
+        type=str,
+        help="DB to auth against",
+        default="admin",
+    )
+    parser.add_argument(
+        "--file",
+        metavar="f",
+        type=str,
+        help="Path to exported .json file",
+        default="config.json",
+    )
+    parser.add_argument(
+        "--databases",
+        metavar="db",
+        type=str,
+        help="Databases separated by a comma, eg: db_1,db_2,db_n",
+    )
+    parser.add_argument("--all", action="store_true", help="Export all databases")
+    parser.add_argument("--verbose", action="store_true", help="Show verbose output")
     args = parser.parse_args(argv[1:])
-    if not args.databases:
-        exit("Please specify at least one database to export")
+
     if args.uri:
         _client = pymongo.MongoClient(args.uri)
     else:
         client_args = {}
-        for i in 'host', 'port', 'username', 'password', 'authSource':
+        for i in "host", "port", "username", "password", "authSource":
             if hasattr(args, i):
                 client_args[i] = getattr(args, i)
         _client = pymongo.MongoClient(**client_args)
-
-    s = mongo_export(_client, args.file, args.databases, args.verbose)
+    if args.databases:
+        databases = args.databases
+    elif args.all:
+        databases = ",".join(_client.database_names())
+    else:
+        exit("Please specify at least one database to export")
+    s = mongo_export(_client, args.file, databases, args.verbose)
     if args.verbose:
         print(s)
 

@@ -1,0 +1,9 @@
+.gitignore
+makefile
+README.md
+*.sh 
+*.yaml
+LICENSE
+*.txt
+.github
+setup.py
